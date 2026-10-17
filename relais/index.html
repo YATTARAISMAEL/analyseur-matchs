@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Relais matchendirect</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="../styles.css">
+<style>
+ol.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:10px;font-size:.95rem}
+pre{background:var(--chip);border:1px solid var(--line);border-radius:10px;padding:12px;font-family:var(--mono);font-size:.72rem;max-height:220px;overflow:auto;white-space:pre;margin:0}
+.ok{color:var(--t1);font-weight:600}
+</style>
+</head>
+<body>
+<header class="appbar"><div><h1>Relais matchendirect</h1><small>Installation en 5 minutes · Cloudflare gratuit</small></div></header>
+<main>
+  <section class="card">
+    <span class="tag">1. Copier le code</span>
+    <button class="btn" id="copy" type="button">Copier le code du relais</button>
+    <p class="status" id="msg" aria-live="polite"></p>
+    <pre id="code">Chargement…</pre>
+  </section>
+  <section class="card">
+    <span class="tag">2. Créer le relais sur Cloudflare</span>
+    <ol class="steps">
+      <li>Ouvre <a href="https://dash.cloudflare.com" target="_blank" rel="noopener">dash.cloudflare.com</a> et connecte-toi.</li>
+      <li>Dans le menu, touche <b>Workers &amp; Pages</b> (parfois sous <b>Compute</b>).</li>
+      <li>Touche <b>Create</b>, puis <b>Start with Hello World!</b> (ou « Create Worker »).</li>
+      <li>Donne le nom <b>analyseur</b>, puis touche <b>Deploy</b>.</li>
+      <li>Touche <b>Edit code</b>. Efface tout le code affiché, colle celui que tu as copié, puis touche <b>Deploy</b>.</li>
+      <li>Copie l'adresse du relais, du type <b>https://analyseur.ton-nom.workers.dev</b>.</li>
+    </ol>
+  </section>
+  <section class="card">
+    <span class="tag">3. Brancher le relais dans l'appli</span>
+    <ol class="steps">
+      <li>Ouvre l'appli, touche <b>Réglages</b>.</li>
+      <li>Colle l'adresse dans <b>Adresse du relais matchendirect</b>, puis touche <b>Enregistrer</b>.</li>
+      <li>Tu dois voir <span class="ok">Relais OK.</span></li>
+    </ol>
+  </section>
+</main>
+<script>
+const code = document.getElementById("code"), msg = document.getElementById("msg");
+fetch("worker.js").then(r => r.text()).then(t => { code.textContent = t; }).catch(() => { code.textContent = "Impossible de charger le code. Vérifie ta connexion."; });
+document.getElementById("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(code.textContent); msg.textContent = "Code copié. Passe à l'étape 2."; }
+  catch (e) {
+    const r = document.createRange(); r.selectNodeContents(code); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    msg.textContent = "Le code est sélectionné : touche « Copier » dans le menu qui apparaît.";
+  }
+};
+</script>
+</body>
+</html>

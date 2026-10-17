@@ -193,7 +193,15 @@ function replaceWith(list, src) {
   setStatus(`${list.length} matchs récupérés (${src}). Vérifie-les et supprime ceux qui ne vont pas.`);
   save(); update();
 }
-$("parse").onclick = () => {
+$("parse").onclick = async () => {
+  const v = $("paste").value.trim();
+  if (/^https:\/\/www\.matchendirect\.fr\/statistique\/\S+\.html$/.test(v)) {
+    if (!getRelay()) { setStatus("Pour utiliser un lien, règle d'abord le relais (bouton « Réglages »). Sinon copie le texte de la page.", true); return; }
+    setStatus("Lecture de la page…");
+    try { const j = await relay("/page?url=" + encodeURIComponent(v)); const l = parseText(j.text || ""); replaceWith(l, "matchendirect"); $("paste").value = ""; autoTeams(l); }
+    catch (e) { setStatus(e.message, true); }
+    return;
+  }
   const l = parseText($("paste").value);
   if (!l.length) { setStatus("Je n'ai reconnu aucun match. Copie la page des confrontations en entier, ou écris : Équipe A - Équipe B 2 - 1", true); return; }
   replaceWith(l, "texte collé"); $("paste").value = "";
@@ -228,22 +236,54 @@ $("addOne").onclick = () => {
 $("one").addEventListener("keydown", e => { if (e.key === "Enter") $("addOne").click(); });
 $("clear").onclick = () => { matches = []; isExample = false; setStatus(""); save(); update(); };
 
-/* ---------- clé API ---------- */
+/* ---------- réglages : relais et clé API ---------- */
 const getKey = () => store.get("apikey", "");
-$("key").value = getKey();
+const getRelay = () => store.get("relay", "").replace(/\/+$/, "");
+$("key").value = getKey(); $("relay").value = getRelay();
 $("openKey").onclick = () => { $("keyCard").hidden = false; $("keyCard").scrollIntoView({ behavior: "smooth" }); };
 $("closeKey").onclick = () => { $("keyCard").hidden = true; };
 $("saveKey").onclick = async () => {
-  const k = $("key").value.trim(); store.set("apikey", k);
-  if (!k) { $("quota").textContent = "Clé supprimée."; return; }
-  $("quota").textContent = "Vérification de la clé…";
-  try {
-    const r = await api("/status");
-    const req = r.response && r.response.requests;
-    $("quota").textContent = req ? `Clé valide. Requêtes utilisées aujourd'hui : ${req.current} sur ${req.limit_day}.` : "Clé enregistrée.";
-    setTimeout(() => { $("keyCard").hidden = true; }, 1500);
-  } catch (e) { $("quota").textContent = e.message; }
+  let r = $("relay").value.trim(); if (r && !/^https?:\/\//.test(r)) r = "https://" + r;
+  store.set("relay", r.replace(/\/+$/, "")); $("relay").value = getRelay();
+  store.set("apikey", $("key").value.trim());
+  const msgs = [];
+  if (getRelay()) {
+    try { const j = await fetch(getRelay() + "/").then(x => x.json()); msgs.push(j.ok ? "Relais OK." : "Le relais répond, mais pas comme prévu."); }
+    catch (e) { msgs.push("Relais injoignable : vérifie l'adresse."); }
+  }
+  if (getKey()) {
+    try { const j = await api("/status"); const q = j.response && j.response.requests; msgs.push(q ? `Clé API valide (${q.current}/${q.limit_day} aujourd'hui).` : "Clé API enregistrée."); }
+    catch (e) { msgs.push(e.message); }
+  }
+  $("quota").textContent = msgs.join(" ") || "Réglages enregistrés.";
+  if (!/injoignable|refusée/.test($("quota").textContent)) setTimeout(() => { $("keyCard").hidden = true; }, 1500);
 };
+
+/* ---------- relais matchendirect ---------- */
+async function relay(path) {
+  let res;
+  try { res = await fetch(getRelay() + path); } catch (e) { throw new Error("Relais injoignable. Vérifie ta connexion ou l'adresse dans Réglages."); }
+  let j = {}; try { j = await res.json(); } catch (e) {}
+  if (!res.ok || j.error) throw new Error(j.error || "Le relais a répondu une erreur (" + res.status + ").");
+  return j;
+}
+async function relayH2H(a, b) {
+  const ck = "r:" + toks(a).join("-") + "|" + toks(b).join("-");
+  const c = store.get(ck, null);
+  if (c && Date.now() - c.t < 3 * 3600e3) return c.d;
+  const j = await relay(`/h2h?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+  const d = { url: j.url, list: parseText(j.text || "") };
+  store.set(ck, { t: Date.now(), d }); return d;
+}
+// noms à utiliser pour l'analyse : ceux de la page s'ils diffèrent de ceux tapés
+function namesFor(list, a, b) {
+  if (!list.length) return [a, b];
+  if (side(list[0], a, b)) {
+    const m = list[0], s = side(m, a, b);
+    return s === 1 ? [m.h, m.a] : [m.a, m.h];
+  }
+  return [list[0].h, list[0].a];
+}
 
 /* ---------- API-Football ---------- */
 // L'offre gratuite limite le nombre de requêtes par minute : on espace les appels.
@@ -262,7 +302,7 @@ async function throttle(onWait) {
 let onThrottle = null;
 async function api(path, retried) {
   const key = getKey();
-  if (!key) throw new Error("Ajoute d'abord ta clé API (bouton « Clé API » en haut).");
+  if (!key) throw new Error("Ajoute d'abord ta clé API (bouton « Réglages » en haut).");
   await throttle(onThrottle);
   let res;
   try { res = await fetch(API + path, { headers: { "x-apisports-key": key } }); }
@@ -272,7 +312,7 @@ async function api(path, retried) {
   const errs = j.errors && (Array.isArray(j.errors) ? j.errors : Object.values(j.errors));
   if (errs && errs.length) {
     const t = errs.join(" ");
-    if (/token|key|access/i.test(t)) throw new Error("Clé API refusée. Vérifie-la dans « Clé API ».");
+    if (/token|key|access/i.test(t)) throw new Error("Clé API refusée. Vérifie-la dans « Réglages ».");
     if (/minute/i.test(t) && !retried) { if (onThrottle) onThrottle(60); await sleep(61000); return api(path, true); }
     if (/request|limit/i.test(t)) throw new Error("Limite de 100 requêtes du jour atteinte. Réessaie demain, ou utilise Capture / Coller.");
     if (/plan|season/i.test(t)) throw new Error("L'offre gratuite ne donne pas accès à ces données : " + t);
@@ -315,6 +355,19 @@ const DONE = new Set(["FT", "AET", "PEN"]);
 $("search").onclick = async () => {
   const b = $("search");
   if (!$("t1").value.trim() || !$("t2").value.trim()) { setStatus("Écris le nom des deux équipes.", true); return; }
+  if (getRelay()) {
+    b.disabled = true; setStatus("Recherche sur matchendirect…");
+    try {
+      const d = await relayH2H($("t1").value.trim(), $("t2").value.trim());
+      if (!d.list.length) throw new Error("Page trouvée, mais aucun match joué n'a été lu dessus.");
+      const [n1, n2] = namesFor(d.list, $("t1").value.trim(), $("t2").value.trim());
+      $("t1").value = n1; $("t2").value = n2; $("p1").hidden = $("p2").hidden = true;
+      replaceWith(d.list, "matchendirect");
+    } catch (e) { setStatus(e.message, true); }
+    finally { b.disabled = false; }
+    return;
+  }
+  if (!getKey()) { setStatus("Règle d'abord le relais matchendirect (bouton « Réglages » en haut).", true); return; }
   b.disabled = true; setStatus("Recherche des équipes…");
   try {
     const [a, c] = await Promise.all([resolve("p1"), resolve("p2")]);
@@ -415,7 +468,8 @@ $("runBatch").onclick = async () => {
   const fx = parseFixtures($("batch").value);
   const bs = $("bstatus");
   if (!fx.length) { bs.textContent = "Écris au moins un match, au format Équipe A - Équipe B."; bs.className = "status err"; return; }
-  if (!getKey()) { bs.textContent = "Ajoute d'abord ta clé API (bouton « Clé API » en haut)."; bs.className = "status err"; return; }
+  const useRelay = !!getRelay();
+  if (!useRelay && !getKey()) { bs.textContent = "Règle d'abord le relais matchendirect (bouton « Réglages » en haut)."; bs.className = "status err"; return; }
   if (fx.length > 25) { bs.textContent = "25 matchs maximum à la fois, pour ne pas épuiser tes requêtes du jour."; bs.className = "status err"; return; }
   stopFlag = false; $("runBatch").disabled = true; $("stopBatch").hidden = false; bs.className = "status";
   batchRes = fx.map(f => ({ a: f.a, b: f.b, wait: true })); renderBatch();
@@ -424,6 +478,14 @@ $("runBatch").onclick = async () => {
     if (stopFlag) { batchRes = batchRes.filter(r => !r.wait); break; }
     bs.textContent = `Analyse ${i + 1} sur ${fx.length} : ${fx[i].a} – ${fx[i].b}…`;
     try {
+      if (useRelay) {
+        const d = await relayH2H(fx[i].a, fx[i].b);
+        const [n1, n2] = namesFor(d.list, fx[i].a, fx[i].b);
+        batchRes[i] = { a: fx[i].a, b: fx[i].b, t1: n1, t2: n2, list: d.list };
+        store.set("batchRes", batchRes.filter(r => !r.wait)); renderBatch();
+        await sleep(800);
+        continue;
+      }
       const la = await findTeams(fx[i].a); if (!la.length) throw new Error(`Équipe introuvable : « ${fx[i].a} ». Essaie le nom en anglais.`);
       const lb = await findTeams(fx[i].b); if (!lb.length) throw new Error(`Équipe introuvable : « ${fx[i].b} ». Essaie le nom en anglais.`);
       const A = bestTeam(la, fx[i].a), B = bestTeam(lb, fx[i].b);
@@ -468,5 +530,5 @@ $("shot").onchange = async e => {
 
 /* ---------- démarrage ---------- */
 syncSeg(); update();
-if (!getKey()) setStatus("Pour la recherche automatique, ajoute ta clé API gratuite (bouton « Clé API » en haut).");
+if (!getRelay() && !getKey()) setStatus("Pour la recherche automatique, règle le relais matchendirect (bouton « Réglages » en haut).");
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
