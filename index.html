@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Analyseur de Matchs</title>
+<meta name="theme-color" content="#101513">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Archivo:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="appbar">
+  <div><h1>Analyseur de matchs</h1><small>Confrontations directes · football</small></div>
+  <button class="gear" id="openKey" type="button">Clé API</button>
+</header>
+
+<main>
+  <section class="card" id="keyCard" hidden>
+    <span class="tag">Ta clé API-Football</span>
+    <div class="keybox">
+      <ol>
+        <li>Crée un compte gratuit sur <a href="https://dashboard.api-football.com/register" target="_blank" rel="noopener">dashboard.api-football.com</a>.</li>
+        <li>Dans ton tableau de bord, ouvre <b>Account → My Access</b> et copie ta clé.</li>
+        <li>Colle-la ici. Elle reste uniquement sur ton téléphone.</li>
+      </ol>
+      <label>Clé API<input id="key" autocomplete="off" spellcheck="false" placeholder="Colle ta clé ici"></label>
+      <div class="row2">
+        <button class="btn" id="saveKey" type="button">Enregistrer</button>
+        <button class="btn ghost" id="closeKey" type="button">Fermer</button>
+      </div>
+      <p class="hint" id="quota">Offre gratuite : 100 requêtes par jour. Une analyse en utilise 3, et les recherches déjà faites sont gardées en mémoire.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <span class="tag">Le match</span>
+    <div class="vs">
+      <label>Équipe 1<input class="team" id="t1" value="Real Madrid" autocomplete="off"></label>
+      <span class="x">VS</span>
+      <label>Équipe 2<input class="team" id="t2" value="Barcelona" autocomplete="off"></label>
+    </div>
+    <div class="row2">
+      <select class="pick" id="p1" hidden aria-label="Choix de l'équipe 1"></select>
+      <select class="pick" id="p2" hidden aria-label="Choix de l'équipe 2"></select>
+    </div>
+    <label>Championnat ou compétition (facultatif)<input id="comp" placeholder="Ex. : La Liga, Ligue 1, Champions League" autocomplete="off"></label>
+    <div>
+      <span class="tag">Matchs à analyser</span>
+      <div class="seg" id="seg" style="margin-top:6px">
+        <button type="button" data-n="5">5</button><button type="button" data-n="10" aria-pressed="true">10</button>
+        <button type="button" data-n="15">15</button><button type="button" data-n="20">20</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <span class="tag">Historique des confrontations</span>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="auto" aria-selected="true">Recherche</button>
+      <button type="button" role="tab" data-tab="photo">Capture</button>
+      <button type="button" role="tab" data-tab="paste">Coller</button>
+    </div>
+
+    <div data-panel="auto">
+      <button class="btn" id="search">Chercher l'historique</button>
+      <p class="hint">Écris les noms en anglais ou comme sur les sites de foot (ex. : Barcelona, Bayern Munich, ASEC Mimosas). Si plusieurs équipes correspondent, choisis la bonne dans la liste qui apparaît.</p>
+    </div>
+    <div data-panel="photo" hidden>
+      <label class="drop" for="shot">Touche ici pour choisir une capture d'écran des résultats (matchendirect, Flashscore…)<input type="file" id="shot" accept="image/*"></label>
+      <p class="hint">Le téléphone lit les scores sur l'image. Vérifie la liste ensuite : la lecture peut se tromper sur un chiffre.</p>
+    </div>
+    <div data-panel="paste" hidden>
+      <textarea id="paste" placeholder="Une ligne par match, du plus récent au plus ancien :&#10;Real Madrid - Barcelone 2 - 1&#10;Barcelone - Real Madrid 4 - 3"></textarea>
+      <button class="btn" id="parse">Ajouter ces matchs</button>
+    </div>
+    <p class="status" id="status" aria-live="polite"></p>
+
+    <div class="matches" id="list"></div>
+    <div class="addrow">
+      <input id="one" placeholder="Ajouter : Barcelone - Real Madrid 1 - 1" autocomplete="off">
+      <button class="btn" id="addOne" type="button" aria-label="Ajouter le match">+</button>
+    </div>
+    <button class="btn ghost" id="clear" type="button">Vider la liste</button>
+  </section>
+
+  <section class="card" id="out"></section>
+  <p class="note">Les statistiques décrivent le passé. Elles aident à se faire une idée, sans garantir le résultat du prochain match.</p>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
