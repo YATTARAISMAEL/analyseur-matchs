@@ -79,8 +79,14 @@
       <p class="hint">Le téléphone lit les scores sur l'image. Vérifie la liste ensuite : la lecture peut se tromper sur un chiffre.</p>
     </div>
     <div data-panel="paste" hidden>
-      <textarea id="paste" placeholder="Une ligne par match, du plus récent au plus ancien :&#10;Real Madrid - Barcelone 2 - 1&#10;Barcelone - Real Madrid 4 - 3"></textarea>
-      <button class="btn" id="parse">Ajouter ces matchs</button>
+      <button class="btn ghost" id="findSite" type="button">1. Trouver la page sur matchendirect</button>
+      <p class="hint">Ouvre la page « statistique » des deux équipes. Dans le menu ⋮ de Chrome, choisis « Sélectionner tout » (ou appui long sur le texte puis « Tout sélectionner »), puis « Copier ».</p>
+      <textarea id="paste" placeholder="2. Colle ici la page copiée, ou une ligne par match :&#10;Real Madrid - Barcelone 2 - 1&#10;Barcelone - Real Madrid 4 - 3"></textarea>
+      <div class="row2">
+        <button class="btn" id="parse" type="button">Remplacer la liste</button>
+        <button class="btn ghost" id="merge" type="button">Ajouter à la liste</button>
+      </div>
+      <p class="hint">Les matchs à venir (sans score) et le reste de la page sont ignorés. Les matchs sont triés par date.</p>
     </div>
     <p class="status" id="status" aria-live="polite"></p>
 

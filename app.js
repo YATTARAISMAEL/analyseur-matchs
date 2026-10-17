@@ -39,15 +39,34 @@ function side(m, t1, t2) {
 }
 
 /* ---------- lecture d'un texte (collé ou lu sur une capture) ---------- */
+// Accepte une ligne par match, ou une page entière copiée (matchendirect, Flashscore…) :
+// date, équipes et score peuvent être sur la même ligne ou sur des lignes voisines.
+const RE_DATE = /^(\d{1,2})[\/.](\d{1,2})[\/.](\d{2,4})\b/;
+const RE_FULL = /^(.+?)\s+[-–—]\s+(.+?)\s+(\d{1,2})\s*[-–—:]\s*(\d{1,2})(?!\d)/;
+const RE_TEAMS = /^([^\d].*?)\s+[-–—]\s+([^\d].*?)$/;
+const RE_SCORE = /^(\d{1,2})\s*[-–—:]\s*(\d{1,2})(?:\s|$)/;
+function toISO(m) { let y = +m[3]; if (y < 100) y += 2000; return `${y}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`; }
 function parseText(txt) {
-  const out = [];
-  txt.split(/\n+/).forEach(line => {
-    let l = line.replace(/\t+/g, " ").replace(/[|]/g, " ").replace(/\s+/g, " ").trim();
-    // corrige les erreurs de lecture courantes dans le score (O → 0, l → 1)
-    l = l.replace(/([OoDlI\d])\s*[-–—:]\s*([OoDlI\d])\s*\S*$/, (s, a, b) => fix(a) + " - " + fix(b));
-    const m = l.match(/^(?:\d{1,2}[\/.]\d{1,2}(?:[\/.]\d{2,4})?\s+)?(.+?)\s+[-–—]\s+(.+?)\s+(\d{1,2})\s*[-–—:]\s*(\d{1,2})\b/);
-    if (m) out.push({ h: m[1].trim(), a: m[2].trim(), hg: +m[3], ag: +m[4], date: "", comp: "" });
-  });
+  const lines = txt.split(/\n+/).map(l => l.replace(/\t+/g, "  ").replace(/[|*]/g, " ").replace(/\s+/g, " ").trim()).filter(Boolean)
+    .map(l => l.replace(/([OoDlI\d])\s*[-–—:]\s*([OoDlI\d])(\s|$)/g, (s, a, b, e) => (/\d/.test(a) || /\d/.test(b)) ? fix(a) + " - " + fix(b) + e : s));
+  const out = []; let lastDate = "", lastDateAt = -9;
+  for (let i = 0; i < lines.length; i++) {
+    let l = lines[i];
+    const d = l.match(RE_DATE);
+    if (d) { lastDate = toISO(d); lastDateAt = i; l = l.slice(d[0].length).trim(); if (!l) continue; }
+    let m = l.match(RE_FULL), h, a, hg, ag;
+    if (m) { h = m[1]; a = m[2]; hg = +m[3]; ag = +m[4]; }
+    else if ((m = l.match(RE_TEAMS))) {
+      const nx = (lines[i + 1] || "").match(RE_SCORE);
+      if (!nx) continue;
+      h = m[1]; a = m[2]; hg = +nx[1]; ag = +nx[2]; i++;
+    } else continue;
+    h = h.trim(); a = a.trim();
+    if (h.length < 2 || a.length < 2 || h.length > 40 || a.length > 40) continue;
+    out.push({ h, a, hg, ag, date: i - lastDateAt <= 2 ? lastDate : "", comp: "" });
+  }
+  // du plus récent au plus ancien quand les dates sont connues
+  if (out.length && out.every(m => m.date)) out.sort((x, y) => y.date.localeCompare(x.date));
   return out;
 }
 function fix(c) { return c === "O" || c === "o" || c === "D" ? "0" : (c === "l" || c === "I") ? "1" : c; }
@@ -176,8 +195,29 @@ function replaceWith(list, src) {
 }
 $("parse").onclick = () => {
   const l = parseText($("paste").value);
-  if (!l.length) { setStatus("Je n'ai reconnu aucune ligne. Format attendu : Équipe A - Équipe B 2 - 1", true); return; }
+  if (!l.length) { setStatus("Je n'ai reconnu aucun match. Copie la page des confrontations en entier, ou écris : Équipe A - Équipe B 2 - 1", true); return; }
   replaceWith(l, "texte collé"); $("paste").value = "";
+  autoTeams(l);
+};
+const key = m => [m.date, toks(m.h).join(""), toks(m.a).join(""), m.hg, m.ag].join("|");
+$("merge").onclick = () => {
+  const l = parseText($("paste").value);
+  if (!l.length) { setStatus("Je n'ai reconnu aucun match dans le texte collé.", true); return; }
+  if (isExample) { matches = []; isExample = false; }
+  const seen = new Set(matches.map(key)); let added = 0;
+  l.forEach(m => { if (!seen.has(key(m))) { matches.push(m); seen.add(key(m)); added++; } });
+  if (matches.every(m => m.date)) matches.sort((x, y) => y.date.localeCompare(x.date));
+  setStatus(`${added} match${added > 1 ? "s" : ""} ajouté${added > 1 ? "s" : ""} à la liste (doublons ignorés).`);
+  $("paste").value = ""; save(); update(); autoTeams(matches);
+};
+// si les noms saisis ne correspondent pas aux matchs collés, on reprend ceux de la liste
+function autoTeams(l) {
+  if (!l.length || side(l[0], $("t1").value, $("t2").value)) return;
+  $("t1").value = l[0].h; $("t2").value = l[0].a; $("p1").hidden = $("p2").hidden = true; save(); update();
+}
+$("findSite").onclick = () => {
+  const q = encodeURIComponent(`matchendirect statistique ${$("t1").value} contre ${$("t2").value}`);
+  window.open("https://www.google.com/search?q=" + q, "_blank");
 };
 $("addOne").onclick = () => {
   const l = parseText($("one").value);
