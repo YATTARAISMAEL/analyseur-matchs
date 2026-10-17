@@ -35,6 +35,12 @@
     </div>
   </section>
 
+  <div class="tabs mode" role="tablist" id="mode">
+    <button type="button" role="tab" data-mode="single" aria-selected="true">Un match</button>
+    <button type="button" role="tab" data-mode="multi" aria-selected="false">Plusieurs matchs</button>
+  </div>
+
+  <div id="single">
   <section class="card">
     <span class="tag">Le match</span>
     <div class="vs">
@@ -87,6 +93,26 @@
   </section>
 
   <section class="card" id="out"></section>
+  </div>
+
+  <div id="multi" hidden>
+  <section class="card">
+    <span class="tag">Tes matchs</span>
+    <textarea id="batch" placeholder="Un match par ligne :&#10;Real Madrid - Barcelona&#10;PSG - Marseille&#10;Arsenal vs Chelsea"></textarea>
+    <div>
+      <span class="tag">Confrontations à analyser par match</span>
+      <div class="seg" id="segB" style="margin-top:6px">
+        <button type="button" data-n="5">5</button><button type="button" data-n="10">10</button>
+        <button type="button" data-n="15">15</button><button type="button" data-n="20">20</button>
+      </div>
+    </div>
+    <button class="btn" id="runBatch">Analyser tous les matchs</button>
+    <button class="btn ghost" id="stopBatch" type="button" hidden>Arrêter</button>
+    <p class="status" id="bstatus" aria-live="polite"></p>
+    <p class="hint">Chaque nouvelle équipe utilise 1 requête et chaque match 1 de plus (100 par jour gratuites). Les recherches déjà faites ne coûtent rien. L'offre gratuite limite aussi le rythme : l'appli patiente toute seule quand il faut.</p>
+  </section>
+  <section class="card" id="bout"></section>
+  </div>
   <p class="note">Les statistiques décrivent le passé. Elles aident à se faire une idée, sans garantir le résultat du prochain match.</p>
 </main>
 

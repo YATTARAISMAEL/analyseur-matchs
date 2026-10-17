@@ -162,9 +162,9 @@ function syncSeg() { $("seg").querySelectorAll("button").forEach(x => x.setAttri
 $("seg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; N = +b.dataset.n; syncSeg(); save(); update(); });
 ["t1", "t2"].forEach((id, k) => $(id).addEventListener("input", () => { $(k ? "p2" : "p1").hidden = true; save(); update(); }));
 $("comp").addEventListener("input", save);
-document.querySelector(".tabs").addEventListener("click", e => {
+document.querySelector("#single .tabs").addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
-  document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b ? "true" : "false"));
+  document.querySelectorAll("#single .tabs button").forEach(x => x.setAttribute("aria-selected", x === b ? "true" : "false"));
   document.querySelectorAll("[data-panel]").forEach(p => p.hidden = p.dataset.panel !== b.dataset.tab);
 });
 function setStatus(t, err) { const s = $("status"); s.textContent = t; s.className = "status" + (err ? " err" : ""); }
@@ -206,9 +206,24 @@ $("saveKey").onclick = async () => {
 };
 
 /* ---------- API-Football ---------- */
-async function api(path) {
+// L'offre gratuite limite le nombre de requêtes par minute : on espace les appels.
+const calls = [];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function throttle(onWait) {
+  for (;;) {
+    const now = Date.now();
+    while (calls.length && now - calls[0] > 61000) calls.shift();
+    if (calls.length < 8) { calls.push(now); return; }
+    const wait = 61000 - (now - calls[0]);
+    if (onWait) onWait(Math.ceil(wait / 1000));
+    await sleep(Math.min(wait, 1000));
+  }
+}
+let onThrottle = null;
+async function api(path, retried) {
   const key = getKey();
   if (!key) throw new Error("Ajoute d'abord ta clé API (bouton « Clé API » en haut).");
+  await throttle(onThrottle);
   let res;
   try { res = await fetch(API + path, { headers: { "x-apisports-key": key } }); }
   catch (e) { throw new Error("Pas de connexion au service de résultats. Vérifie ta connexion internet."); }
@@ -218,6 +233,7 @@ async function api(path) {
   if (errs && errs.length) {
     const t = errs.join(" ");
     if (/token|key|access/i.test(t)) throw new Error("Clé API refusée. Vérifie-la dans « Clé API ».");
+    if (/minute/i.test(t) && !retried) { if (onThrottle) onThrottle(60); await sleep(61000); return api(path, true); }
     if (/request|limit/i.test(t)) throw new Error("Limite de 100 requêtes du jour atteinte. Réessaie demain, ou utilise Capture / Coller.");
     if (/plan|season/i.test(t)) throw new Error("L'offre gratuite ne donne pas accès à ces données : " + t);
     throw new Error("Erreur du service : " + t);
@@ -286,6 +302,112 @@ $("search").onclick = async () => {
   } catch (e) { setStatus(e.message, true); }
   finally { b.disabled = false; }
 };
+
+/* ---------- plusieurs matchs ---------- */
+function computeStats(list, t1, t2, n) {
+  const used = list.slice(0, n).map(m => ({ m, s: side(m, t1, t2) })).filter(x => x.s);
+  const k = used.length; if (!k) return null;
+  let g1 = 0, g2 = 0, w1 = 0, w2 = 0, d = 0, btts = 0, o25 = 0;
+  used.forEach(({ m, s }) => {
+    const x = s === 1 ? m.hg : m.ag, y = s === 1 ? m.ag : m.hg;
+    g1 += x; g2 += y; if (x > y) w1++; else if (y > x) w2++; else d++;
+    if (x > 0 && y > 0) btts++; if (x + y > 2) o25++;
+  });
+  return { n: k, w1, w2, d, avg1: g1 / k, avg2: g2 / k, avg: (g1 + g2) / k, btts: btts / k, o25: o25 / k };
+}
+async function fetchH2H(a, c) {
+  const j = await cached(`/fixtures/headtohead?h2h=${a.id}-${c.id}`, 6);
+  return (j.response || []).filter(f => DONE.has(f.fixture.status.short) && f.goals.home != null)
+    .map(f => ({ h: f.teams.home.name, a: f.teams.away.name, hg: f.goals.home, ag: f.goals.away, date: f.fixture.date, comp: f.league.name }))
+    .sort((x, y) => new Date(y.date) - new Date(x.date));
+}
+function parseFixtures(txt) {
+  return txt.split(/\n+/).map(l => l.trim()).filter(Boolean).map(l => {
+    const p = l.split(/\s+(?:-|–|—|vs\.?|contre)\s+/i);
+    return p.length >= 2 ? { a: p[0].trim(), b: p.slice(1).join(" ").replace(/\s+\d+\s*[-:]\s*\d+\s*$/, "").trim() } : null;
+  }).filter(Boolean);
+}
+let NB = store.get("nb", 10);
+let batchRes = store.get("batchRes", []);
+let stopFlag = false;
+function syncSegB() { $("segB").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", +x.dataset.n === NB ? "true" : "false")); }
+$("segB").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; NB = +b.dataset.n; store.set("nb", NB); syncSegB(); renderBatch(); });
+$("batch").value = store.get("batchTxt", "");
+$("batch").addEventListener("input", () => store.set("batchTxt", $("batch").value));
+function verdict(s, t1, t2) {
+  const p1 = s.w1 / s.n, p2 = s.w2 / s.n;
+  if (p1 >= 0.5 && p1 - p2 >= 0.2) return { cls: "p1", txt: "Avantage " + t1 };
+  if (p2 >= 0.5 && p2 - p1 >= 0.2) return { cls: "p2", txt: "Avantage " + t2 };
+  return { cls: "", txt: "Équilibré" };
+}
+function renderBatch() {
+  const out = $("bout");
+  if (!batchRes.length) { out.innerHTML = '<span class="tag">Résultats</span><p class="empty">Écris tes matchs, un par ligne, puis touche « Analyser tous les matchs ».</p>'; return; }
+  out.innerHTML = `<span class="tag">Résultats · ${NB} dernières confrontations par match</span>` + batchRes.map((r, i) => {
+    if (r.wait) return `<div class="bm wait"><div class="bm-top"><div class="bm-teams">${esc(r.a)} <span style="color:var(--muted)">vs</span> ${esc(r.b)}</div><span class="pill">En attente</span></div></div>`;
+    if (r.err) return `<div class="bm"><div class="bm-top"><div class="bm-teams">${esc(r.a)} <span style="color:var(--muted)">vs</span> ${esc(r.b)}</div><span class="pill err">Erreur</span></div><div class="bm-foot"><span>${esc(r.err)}</span></div></div>`;
+    const s = computeStats(r.list, r.t1, r.t2, NB);
+    if (!s) return `<div class="bm"><div class="bm-top"><div class="bm-teams"><span class="c1">${esc(r.t1)}</span> <span style="color:var(--muted)">vs</span> <span class="c2">${esc(r.t2)}</span></div><span class="pill">Aucun match</span></div><div class="bm-foot"><span>Aucune confrontation trouvée (saisons récentes seulement).</span></div></div>`;
+    const v = verdict(s, r.t1, r.t2);
+    return `<div class="bm"><div class="bm-top"><div class="bm-teams"><span class="c1">${esc(r.t1)}</span> <span style="color:var(--muted)">vs</span> <span class="c2">${esc(r.t2)}</span></div><span class="pill ${v.cls}">${esc(v.txt)}</span></div>
+      <div class="kpis">
+        <div class="kpi"><b>${pc(s.w1 / s.n)}</b><span>Vict. 1</span></div>
+        <div class="kpi"><b>${pc(s.d / s.n)}</b><span>Nul</span></div>
+        <div class="kpi"><b>${pc(s.w2 / s.n)}</b><span>Vict. 2</span></div>
+        <div class="kpi"><b>${f1(s.avg)}</b><span>Buts/match</span></div>
+      </div>
+      <div class="kpis" style="grid-template-columns:repeat(2,1fr)">
+        <div class="kpi"><b>${pc(s.o25)}</b><span>+2,5 buts</span></div>
+        <div class="kpi"><b>${pc(s.btts)}</b><span>Les 2 marquent</span></div>
+      </div>
+      <div class="bm-foot"><span>Sur ${s.n} match${s.n > 1 ? "s" : ""}${s.n < NB ? " (pas plus de disponibles)" : ""} · ${f1(s.avg1)} – ${f1(s.avg2)} buts/match</span><button class="link" data-open="${i}">Détail →</button></div></div>`;
+  }).join("");
+}
+$("bout").addEventListener("click", e => {
+  const b = e.target.closest("[data-open]"); if (!b) return;
+  const r = batchRes[+b.dataset.open];
+  $("t1").value = r.t1; $("t2").value = r.t2; $("p1").hidden = $("p2").hidden = true;
+  matches = r.list.slice(); isExample = false; N = NB; syncSeg(); save(); update();
+  setMode("single"); setStatus(`Détail de ${r.t1} – ${r.t2}.`); window.scrollTo(0, 0);
+});
+$("stopBatch").onclick = () => { stopFlag = true; };
+$("runBatch").onclick = async () => {
+  const fx = parseFixtures($("batch").value);
+  const bs = $("bstatus");
+  if (!fx.length) { bs.textContent = "Écris au moins un match, au format Équipe A - Équipe B."; bs.className = "status err"; return; }
+  if (!getKey()) { bs.textContent = "Ajoute d'abord ta clé API (bouton « Clé API » en haut)."; bs.className = "status err"; return; }
+  if (fx.length > 25) { bs.textContent = "25 matchs maximum à la fois, pour ne pas épuiser tes requêtes du jour."; bs.className = "status err"; return; }
+  stopFlag = false; $("runBatch").disabled = true; $("stopBatch").hidden = false; bs.className = "status";
+  batchRes = fx.map(f => ({ a: f.a, b: f.b, wait: true })); renderBatch();
+  onThrottle = s => { bs.textContent = `Pause imposée par l'offre gratuite… reprise dans ${s} s`; };
+  for (let i = 0; i < fx.length; i++) {
+    if (stopFlag) { batchRes = batchRes.filter(r => !r.wait); break; }
+    bs.textContent = `Analyse ${i + 1} sur ${fx.length} : ${fx[i].a} – ${fx[i].b}…`;
+    try {
+      const la = await findTeams(fx[i].a); if (!la.length) throw new Error(`Équipe introuvable : « ${fx[i].a} ». Essaie le nom en anglais.`);
+      const lb = await findTeams(fx[i].b); if (!lb.length) throw new Error(`Équipe introuvable : « ${fx[i].b} ». Essaie le nom en anglais.`);
+      const A = bestTeam(la, fx[i].a), B = bestTeam(lb, fx[i].b);
+      if (A.id === B.id) throw new Error("Les deux noms donnent la même équipe.");
+      const list = await fetchH2H(A, B);
+      batchRes[i] = { a: fx[i].a, b: fx[i].b, t1: A.name, t2: B.name, list };
+    } catch (e) {
+      batchRes[i] = { a: fx[i].a, b: fx[i].b, err: e.message };
+      if (/Limite de 100|Clé API refusée/.test(e.message)) { for (let k = i + 1; k < fx.length; k++) batchRes[k] = { a: fx[k].a, b: fx[k].b, err: "Non analysé : " + e.message }; renderBatch(); break; }
+    }
+    store.set("batchRes", batchRes.filter(r => !r.wait)); renderBatch();
+  }
+  onThrottle = null; $("runBatch").disabled = false; $("stopBatch").hidden = true;
+  const ok = batchRes.filter(r => r.list).length;
+  bs.textContent = stopFlag ? `Arrêté. ${ok} match${ok > 1 ? "s" : ""} analysé${ok > 1 ? "s" : ""}.` : `Terminé : ${ok} sur ${fx.length} analysés. Touche « Détail » pour voir l'analyse complète d'un match.`;
+};
+
+/* ---------- choix du mode ---------- */
+function setMode(m) {
+  document.querySelectorAll("#mode button").forEach(x => x.setAttribute("aria-selected", x.dataset.mode === m ? "true" : "false"));
+  $("single").hidden = m !== "single"; $("multi").hidden = m !== "multi"; store.set("mode", m);
+}
+$("mode").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setMode(b.dataset.mode); });
+setMode(store.get("mode", "single")); syncSegB(); renderBatch();
 
 /* ---------- lecture de capture sur le téléphone (OCR) ---------- */
 function loadScript(src) { return new Promise((ok, ko) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => ko(new Error("load")); document.head.appendChild(s); }); }
