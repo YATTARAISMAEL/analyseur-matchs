@@ -503,6 +503,53 @@ $("runBatch").onclick = async () => {
   bs.textContent = stopFlag ? `Arrêté. ${ok} match${ok > 1 ? "s" : ""} analysé${ok > 1 ? "s" : ""}.` : `Terminé : ${ok} sur ${fx.length} analysés. Touche « Détail » pour voir l'analyse complète d'un match.`;
 };
 
+/* ---------- liste de matchs depuis une photo ---------- */
+// Garde les lignes « Équipe A - Équipe B » d'un texte lu sur une photo (cotes, heures et dates retirées).
+function extractFixtures(txt) {
+  const out = [], seen = new Set();
+  const clean = s => s.replace(/^[^A-Za-zÀ-ÿ0-9]+|[^A-Za-zÀ-ÿ0-9.)]+$/g, "").replace(/\s+/g, " ").trim();
+  txt.split(/\n+/).forEach(line => {
+    let l = line.replace(/[|_*•»«]/g, " ")
+      .replace(/\b\d{1,2}[\/.]\d{1,2}(?:[\/.]\d{2,4})?\b/g, " ")   // dates
+      .replace(/\b\d{1,2}\s*[:h]\s*\d{2}\b/g, " ")                 // heures
+      .replace(/\b\d+[.,]\d+\b/g, " ")                              // cotes
+      .replace(/\b\d{1,2}\s*[-:]\s*\d{1,2}\b/g, " ")                // scores
+      .replace(/\s+/g, " ").trim()
+      .replace(/^(?:(?:lun|mar|mer|jeu|ven|sam|dim)\.?|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|aujourd'hui|demain|today|tomorrow|mon|tue|wed|thu|fri|sat|sun)\b\.?\s+/i, "");
+    const m = l.match(/^(.*?[A-Za-zÀ-ÿ]{2}.*?)\s+(?:-|–|—|vs\.?|v\.?|contre)\s+(.*?[A-Za-zÀ-ÿ]{2}.*)$/i);
+    if (!m) return;
+    const a = clean(m[1]), b = clean(m[2]);
+    if (a.length < 3 || b.length < 3 || a.length > 35 || b.length > 35) return;
+    const k = (a + "|" + b).toLowerCase(); if (seen.has(k)) return; seen.add(k);
+    out.push(a + " - " + b);
+  });
+  return out;
+}
+$("bshot").onchange = async e => {
+  const files = [...(e.target.files || [])]; if (!files.length) return;
+  const bs = $("bstatus"); bs.className = "status";
+  bs.textContent = "Préparation de la lecture (la première fois, ça peut prendre une minute)…";
+  try {
+    if (!window.Tesseract) await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js");
+    let found = [];
+    for (let i = 0; i < files.length; i++) {
+      const r = await Tesseract.recognize(files[i], "fra+eng", {
+        logger: m => { if (m.status === "recognizing text") bs.textContent = `Lecture de la photo ${i + 1}/${files.length}… ${Math.round(m.progress * 100)} %`; }
+      });
+      found = found.concat(extractFixtures(r.data.text));
+    }
+    found = [...new Set(found)];
+    if (!found.length) { bs.textContent = "Aucun match « Équipe A - Équipe B » trouvé sur la photo. Essaie une image plus nette, ou écris les matchs."; bs.className = "status err"; return; }
+    const cur = $("batch").value.trim();
+    $("batch").value = (cur ? cur + "\n" : "") + found.join("\n");
+    store.set("batchTxt", $("batch").value);
+    bs.textContent = `${found.length} match${found.length > 1 ? "s" : ""} trouvé${found.length > 1 ? "s" : ""} sur la photo. Vérifie et corrige la liste si besoin, puis touche « Analyser tous les matchs ».`;
+  } catch (err) {
+    bs.textContent = err && err.message === "load" ? "La lecture de photo a besoin d'internet la première fois. Vérifie ta connexion." : "Impossible de lire cette photo. Essaie une image plus nette.";
+    bs.className = "status err";
+  } finally { e.target.value = ""; }
+};
+
 /* ---------- choix du mode ---------- */
 function setMode(m) {
   document.querySelectorAll("#mode button").forEach(x => x.setAttribute("aria-selected", x.dataset.mode === m ? "true" : "false"));
