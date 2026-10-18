@@ -325,11 +325,48 @@ async function cached(path, ttlH) {
   if (c && Date.now() - c.t < ttlH * 3600e3) return c.d;
   const d = await api(path); store.set("c:" + path, { t: Date.now(), d }); return d;
 }
+// Noms français des listes → noms utilisés par API-Football
+const EN = {
+  "paris saint-germain": "Paris Saint Germain", "olympique de marseille": "Marseille", "as monaco": "Monaco", "ogc nice": "Nice",
+  "olympique lyonnais": "Lyon", "saint-étienne": "Saint Etienne", "barcelone": "Barcelona", "atlético madrid": "Atletico Madrid",
+  "séville": "Sevilla", "valence": "Valencia", "majorque": "Mallorca", "alavés": "Alaves", "celta vigo": "Celta Vigo", "real oviedo": "Oviedo",
+  "leganés": "Leganes", "inter milan": "Inter", "juventus turin": "Juventus", "naples": "Napoli", "as rome": "AS Roma", "lazio rome": "Lazio",
+  "bologne": "Bologna", "côme": "Como", "parme": "Parma", "hellas vérone": "Verona", "pise": "Pisa", "venise": "Venezia",
+  "bayern munich": "Bayern Munchen", "eintracht francfort": "Eintracht Frankfurt", "fribourg": "SC Freiburg", "mayence": "FSV Mainz 05",
+  "borussia mönchengladbach": "Borussia Monchengladbach", "werder brême": "Werder Bremen", "augsbourg": "FC Augsburg", "hambourg": "Hamburger SV",
+  "cologne": "1. FC Köln", "st. pauli": "St. Pauli", "sporting portugal": "Sporting CP", "vitória guimarães": "Guimaraes", "famalicão": "Famalicao",
+  "ajax amsterdam": "Ajax", "nec nimègue": "NEC Nijmegen", "club bruges": "Club Brugge", "cercle bruges": "Cercle Brugge", "gand": "Gent",
+  "standard de liège": "Standard Liege", "malines": "Mechelen", "saint-trond": "St. Truiden", "union saint-gilloise": "Union St. Gilloise",
+  "fenerbahçe": "Fenerbahce", "besiktas": "Besiktas", "basaksehir": "Istanbul Basaksehir", "so armée": "SOA", "fc san pedro": "San Pedro",
+  "côte d'ivoire": "Ivory Coast", "sénégal": "Senegal", "maroc": "Morocco", "algérie": "Algeria", "égypte": "Egypt", "cameroun": "Cameroon",
+  "guinée": "Guinea", "tunisie": "Tunisia", "afrique du sud": "South Africa", "rd congo": "Congo DR", "espagne": "Spain", "angleterre": "England",
+  "allemagne": "Germany", "italie": "Italy", "pays-bas": "Netherlands", "belgique": "Belgium", "croatie": "Croatia", "brésil": "Brazil",
+  "argentine": "Argentina", "colombie": "Colombia", "états-unis": "USA", "mexique": "Mexico", "japon": "Japan"
+};
+const NATIONS = new Set((LEAGUES["Nations (sélections)"] || []).map(n => n.toLowerCase()));
+const asciiQ = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 async function findTeams(name) {
-  const q = name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-  if (q.length < 3) throw new Error(`Le nom « ${name} » est trop court (3 lettres minimum).`);
-  const j = await cached("/teams?search=" + encodeURIComponent(q), 24 * 30);
-  return (j.response || []).map(x => ({ id: x.team.id, name: x.team.name, country: x.team.country || "", national: x.team.national }));
+  const low = name.trim().toLowerCase();
+  const tries = [];
+  if (EN[low]) tries.push(EN[low]);
+  tries.push(name);
+  const stripped = name.replace(/^(AS|FC|OGC|SC|RC|AC|US|CF|SO|Olympique de|Olympique)\s+/i, "").replace(/\s+(FC|SC|CF)$/i, "");
+  if (stripped !== name) tries.push(stripped);
+  const words = asciiQ(stripped).split(" ").filter(w => w.length >= 4);
+  if (words.length > 1) tries.push(words.sort((a, b) => b.length - a.length)[0]);
+  const seen = new Set();
+  for (const t of tries) {
+    const q = asciiQ(t); if (q.length < 3 || seen.has(q.toLowerCase())) continue; seen.add(q.toLowerCase());
+    const j = await cached("/teams?search=" + encodeURIComponent(q), 24 * 30);
+    let list = (j.response || []).map(x => ({ id: x.team.id, name: x.team.name, country: x.team.country || "", national: x.team.national }));
+    if (list.length) {
+      const wantNation = NATIONS.has(low);
+      list = list.filter(x => wantNation ? x.national : true);
+      if (!wantNation) list.sort((a, b) => a.national - b.national);
+      if (list.length) return list;
+    }
+  }
+  return [];
 }
 function bestTeam(list, typed) {
   const t = toks(typed).join(" ");
@@ -344,7 +381,7 @@ async function resolve(k) {
   const input = $(k === "p1" ? "t1" : "t2"), sel = $(k);
   if (!sel.hidden && sel.value) { const o = sel.selectedOptions[0]; return { id: +sel.value, name: o.textContent.replace(/ \([^)]*\)$/, "") }; }
   const list = await findTeams(input.value.trim());
-  if (!list.length) throw new Error(`Aucune équipe trouvée pour « ${input.value} ». Essaie le nom en anglais (ex. : Bayern Munich).`);
+  if (!list.length) throw new Error(`Aucune équipe trouvée pour « ${input.value} ». Essaie avec « Taper le nom » ou vérifie le relais dans Réglages.`);
   const best = bestTeam(list, input.value);
   fillPick(sel, list, best);
   return best;
@@ -486,8 +523,8 @@ $("runBatch").onclick = async () => {
         await sleep(800);
         continue;
       }
-      const la = await findTeams(fx[i].a); if (!la.length) throw new Error(`Équipe introuvable : « ${fx[i].a} ». Essaie le nom en anglais.`);
-      const lb = await findTeams(fx[i].b); if (!lb.length) throw new Error(`Équipe introuvable : « ${fx[i].b} ». Essaie le nom en anglais.`);
+      const la = await findTeams(fx[i].a); if (!la.length) throw new Error(`Équipe introuvable : « ${fx[i].a} ». Essaie avec « Taper le nom » ou vérifie le relais dans Réglages.`);
+      const lb = await findTeams(fx[i].b); if (!lb.length) throw new Error(`Équipe introuvable : « ${fx[i].b} ». Essaie avec « Taper le nom » ou vérifie le relais dans Réglages.`);
       const A = bestTeam(la, fx[i].a), B = bestTeam(lb, fx[i].b);
       if (A.id === B.id) throw new Error("Les deux noms donnent la même équipe.");
       const list = await fetchH2H(A, B);
