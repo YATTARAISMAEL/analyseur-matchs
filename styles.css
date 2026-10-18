@@ -108,3 +108,11 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);
 .bm-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.78rem;color:var(--muted)}
 .link{background:none;border:0;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;padding:4px 0}
 .bm.wait{opacity:.6}
+
+.picks{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pick-team{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pick-team .lab{font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.04em;font-size:.95rem}
+.lab.c1{color:var(--t1)} .lab.c2{color:var(--t2)}
+select.pick{font-size:15px;padding:11px 10px}
+select.pick.big{font-family:var(--display);font-weight:800;font-size:1.05rem;text-transform:uppercase}
+#s1,#bs1{border-bottom:3px solid var(--t1)} #s2,#bs2{border-bottom:3px solid var(--t2)}

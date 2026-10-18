@@ -40,7 +40,19 @@
   <div id="single">
   <section class="card">
     <span class="tag">Le match</span>
-    <div class="vs">
+    <div class="picks">
+      <div class="pick-team">
+        <span class="lab c1">Équipe 1</span>
+        <select class="pick" id="l1" aria-label="Championnat de l'équipe 1"></select>
+        <select class="pick big" id="s1" aria-label="Équipe 1"></select>
+      </div>
+      <div class="pick-team">
+        <span class="lab c2">Équipe 2</span>
+        <select class="pick" id="l2" aria-label="Championnat de l'équipe 2"></select>
+        <select class="pick big" id="s2" aria-label="Équipe 2"></select>
+      </div>
+    </div>
+    <div class="vs" id="typed" hidden>
       <label>Équipe 1<input class="team" id="t1" value="Real Madrid" autocomplete="off"></label>
       <span class="x">VS</span>
       <label>Équipe 2<input class="team" id="t2" value="Barcelona" autocomplete="off"></label>
@@ -49,7 +61,8 @@
       <select class="pick" id="p1" hidden aria-label="Choix de l'équipe 1"></select>
       <select class="pick" id="p2" hidden aria-label="Choix de l'équipe 2"></select>
     </div>
-    <label>Championnat ou compétition (facultatif)<input id="comp" placeholder="Ex. : La Liga, Ligue 1, Champions League" autocomplete="off"></label>
+    <button class="link" id="toggleTyped" type="button">✏️ Équipe absente des listes ? Taper le nom</button>
+    <label hidden id="compLab">Championnat ou compétition (facultatif)<input id="comp" placeholder="Ex. : La Liga, Ligue 1, Champions League" autocomplete="off"></label>
     <div>
       <span class="tag">Matchs à analyser</span>
       <div class="seg" id="seg" style="margin-top:6px">
@@ -69,7 +82,7 @@
 
     <div data-panel="auto">
       <button class="btn" id="search">Chercher l'historique</button>
-      <p class="hint" id="searchHint">Écris les noms comme sur matchendirect (ex. : Barcelone, Bayern Munich, Juventus Turin).</p>
+      <p class="hint" id="searchHint">Choisis le championnat puis les deux équipes, et touche « Chercher l'historique ».</p>
     </div>
     <div data-panel="photo" hidden>
       <label class="drop" for="shot">Touche ici pour choisir une capture d'écran des résultats (matchendirect, Flashscore…)<input type="file" id="shot" accept="image/*"></label>
@@ -101,6 +114,19 @@
   <div id="multi" hidden>
   <section class="card">
     <span class="tag">Tes matchs</span>
+    <div class="picks">
+      <div class="pick-team">
+        <span class="lab c1">Équipe 1</span>
+        <select class="pick" id="bl1" aria-label="Championnat de l'équipe 1"></select>
+        <select class="pick big" id="bs1" aria-label="Équipe 1"></select>
+      </div>
+      <div class="pick-team">
+        <span class="lab c2">Équipe 2</span>
+        <select class="pick" id="bl2" aria-label="Championnat de l'équipe 2"></select>
+        <select class="pick big" id="bs2" aria-label="Équipe 2"></select>
+      </div>
+    </div>
+    <button class="btn ghost" id="addPick" type="button">+ Ajouter ce match à la liste</button>
     <label class="drop" for="bshot">📷 Photo ou capture de ta liste de matchs (coupon, programme…)<input type="file" id="bshot" accept="image/*" multiple></label>
     <textarea id="batch" placeholder="Ou écris un match par ligne :&#10;Real Madrid - Barcelona&#10;PSG - Marseille&#10;Arsenal vs Chelsea"></textarea>
     <div>
@@ -120,6 +146,7 @@
   <p class="note">Les statistiques décrivent le passé. Elles aident à se faire une idée, sans garantir le résultat du prochain match.</p>
 </main>
 
+<script src="teams.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

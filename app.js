@@ -550,6 +550,71 @@ $("bshot").onchange = async e => {
   } finally { e.target.value = ""; }
 };
 
+/* ---------- listes déroulantes championnat / équipe ---------- */
+const LEAGUE_NAMES = Object.keys(LEAGUES);
+function fillLeagues(sel, val) {
+  sel.innerHTML = LEAGUE_NAMES.map(l => `<option${l === val ? " selected" : ""}>${esc(l)}</option>`).join("");
+}
+function fillTeams(sel, league, val) {
+  const list = LEAGUES[league] || [];
+  sel.innerHTML = list.map(t => `<option${t === val ? " selected" : ""}>${esc(t)}</option>`).join("");
+}
+function leagueOf(team) { return LEAGUE_NAMES.find(l => LEAGUES[l].some(t => same(t, team) && toks(t).join(" ") === toks(team).join(" "))) || LEAGUE_NAMES.find(l => LEAGUES[l].some(t => same(t, team))); }
+function setupPicker(lId, sId, saved, fallbackIndex) {
+  const L = $(lId), S = $(sId);
+  const league = (saved && LEAGUES[saved.l]) ? saved.l : LEAGUE_NAMES[0];
+  fillLeagues(L, league);
+  const team = saved && LEAGUES[league].includes(saved.t) ? saved.t : LEAGUES[league][fallbackIndex] || LEAGUES[league][0];
+  fillTeams(S, league, team);
+  L.addEventListener("change", () => { fillTeams(S, L.value, LEAGUES[L.value][0]); S.dispatchEvent(new Event("change")); });
+}
+// Mode « Un match » : les listes remplissent les noms utilisés pour la recherche
+function savedPick(k, name) {
+  const s = store.get(k, null); if (s) return s;
+  const l = leagueOf(name); return l ? { l, t: LEAGUES[l].find(t => same(t, name)) } : null;
+}
+setupPicker("l1", "s1", savedPick("pick1", $("t1").value), 0);
+setupPicker("l2", "s2", savedPick("pick2", $("t2").value), 1);
+function pickToTyped() {
+  if (!$("typed").hidden) return;
+  $("t1").value = $("s1").value; $("t2").value = $("s2").value;
+  store.set("pick1", { l: $("l1").value, t: $("s1").value }); store.set("pick2", { l: $("l2").value, t: $("s2").value });
+  save(); update();
+}
+["s1", "s2"].forEach(id => $(id).addEventListener("change", pickToTyped));
+// l'équipe 2 suit le championnat de l'équipe 1 quand on le change
+$("l1").addEventListener("change", () => { if ($("l2").value !== $("l1").value) { $("l2").value = $("l1").value; fillTeams($("s2"), $("l2").value, LEAGUES[$("l2").value][1]); pickToTyped(); } });
+$("toggleTyped").onclick = () => {
+  const show = $("typed").hidden;
+  $("typed").hidden = !show; $("compLab").hidden = !show;
+  document.querySelector("#single .picks").hidden = show;
+  $("toggleTyped").textContent = show ? "📋 Revenir aux listes" : "✏️ Équipe absente des listes ? Taper le nom";
+  if (!show) pickToTyped();
+};
+// si le nom affiché correspond à une équipe des listes, on la présélectionne
+(function syncInit() {
+  const a = $("t1").value, b = $("t2").value;
+  if (a && !same(a, $("s1").value) || b && !same(b, $("s2").value)) {
+    const la = leagueOf(a), lb = leagueOf(b);
+    if (la && lb) { fillLeagues($("l1"), la); fillTeams($("s1"), la, LEAGUES[la].find(t => same(t, a))); fillLeagues($("l2"), lb); fillTeams($("s2"), lb, LEAGUES[lb].find(t => same(t, b))); }
+  }
+})();
+
+// Mode « Plusieurs matchs » : ajouter un match choisi dans les listes
+setupPicker("bl1", "bs1", store.get("bpick1", null), 0);
+setupPicker("bl2", "bs2", store.get("bpick2", null), 1);
+$("bl1").addEventListener("change", () => { $("bl2").value = $("bl1").value; fillTeams($("bs2"), $("bl2").value, LEAGUES[$("bl2").value][1]); });
+$("addPick").onclick = () => {
+  const a = $("bs1").value, b = $("bs2").value, bs = $("bstatus");
+  if (a === b) { bs.textContent = "Choisis deux équipes différentes."; bs.className = "status err"; return; }
+  const line = a + " - " + b, cur = $("batch").value.trim();
+  if (cur.split(/\n/).some(l => l.trim() === line)) { bs.textContent = "Ce match est déjà dans la liste."; bs.className = "status err"; return; }
+  $("batch").value = (cur ? cur + "\n" : "") + line; store.set("batchTxt", $("batch").value);
+  store.set("bpick1", { l: $("bl1").value, t: a }); store.set("bpick2", { l: $("bl2").value, t: b });
+  const n = $("batch").value.trim().split(/\n/).length;
+  bs.className = "status"; bs.textContent = `${line} ajouté. ${n} match${n > 1 ? "s" : ""} dans la liste.`;
+};
+
 /* ---------- choix du mode ---------- */
 function setMode(m) {
   document.querySelectorAll("#mode button").forEach(x => x.setAttribute("aria-selected", x.dataset.mode === m ? "true" : "false"));
