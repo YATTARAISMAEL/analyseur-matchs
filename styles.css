@@ -116,3 +116,15 @@ input:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);
 select.pick{font-size:15px;padding:11px 10px}
 select.pick.big{font-family:var(--display);font-weight:800;font-size:1.05rem;text-transform:uppercase}
 #s1,#bs1{border-bottom:3px solid var(--t1)} #s2,#bs2{border-bottom:3px solid var(--t2)}
+
+.combo{margin-top:6px;border:2px solid var(--accent);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.combo-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.combo h3{margin:0;font-family:var(--display);font-weight:800;font-size:1.3rem;text-transform:uppercase;color:var(--accent)}
+.tabs.mini{grid-template-columns:1fr 1fr;gap:4px}
+.tabs.mini button{padding:6px 10px;font-size:.8rem}
+.combo-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.combo-m{font-size:.8rem;color:var(--muted);overflow-wrap:anywhere}
+.combo-p{font-weight:600;overflow-wrap:anywhere}
+.combo-row b,.combo-sum b{font-family:var(--mono);font-weight:500}
+.combo-sum{display:flex;justify-content:space-between;gap:10px;font-size:.9rem}
+.combo-sum b{font-size:1.05rem;color:var(--accent)}

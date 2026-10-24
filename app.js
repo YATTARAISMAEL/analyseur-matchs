@@ -437,13 +437,14 @@ $("search").onclick = async () => {
 function computeStats(list, t1, t2, n) {
   const used = list.slice(0, n).map(m => ({ m, s: side(m, t1, t2) })).filter(x => x.s);
   const k = used.length; if (!k) return null;
-  let g1 = 0, g2 = 0, w1 = 0, w2 = 0, d = 0, btts = 0, o25 = 0;
+  let g1 = 0, g2 = 0, w1 = 0, w2 = 0, d = 0, btts = 0, o15 = 0, o25 = 0, o35 = 0;
   used.forEach(({ m, s }) => {
     const x = s === 1 ? m.hg : m.ag, y = s === 1 ? m.ag : m.hg;
     g1 += x; g2 += y; if (x > y) w1++; else if (y > x) w2++; else d++;
-    if (x > 0 && y > 0) btts++; if (x + y > 2) o25++;
+    if (x > 0 && y > 0) btts++; if (x + y > 1) o15++; if (x + y > 2) o25++; if (x + y > 3) o35++;
   });
-  return { n: k, w1, w2, d, avg1: g1 / k, avg2: g2 / k, avg: (g1 + g2) / k, btts: btts / k, o25: o25 / k };
+  return { n: k, w1, w2, d, avg1: g1 / k, avg2: g2 / k, avg: (g1 + g2) / k, btts: btts / k, o25: o25 / k,
+    c: { w1, w2, d, btts, o15, o25, o35 } };
 }
 async function fetchH2H(a, c) {
   const j = await cached(`/fixtures/headtohead?h2h=${a.id}-${c.id}`, 6);
@@ -491,9 +492,45 @@ function renderBatch() {
         <div class="kpi"><b>${pc(s.btts)}</b><span>Les 2 marquent</span></div>
       </div>
       <div class="bm-foot"><span>Sur ${s.n} match${s.n > 1 ? "s" : ""}${s.n < NB ? " (pas plus de disponibles)" : ""} · ${f1(s.avg1)} – ${f1(s.avg2)} buts/match</span><button class="link" data-open="${i}">Détail →</button></div></div>`;
-  }).join("");
+  }).join("") + combineHTML();
+}
+
+/* ---------- combiné proposé ---------- */
+let comboMode = store.get("comboMode", "prudent");
+// Pour chaque match, le pari qui est passé le plus souvent dans les confrontations.
+// La note est lissée selon le nombre de matchs : 4 sur 4 compte moins que 9 sur 10.
+function bestPick(r) {
+  const s = computeStats(r.list, r.t1, r.t2, NB); if (!s || s.n < 4) return null;
+  const c = s.c, n = s.n;
+  const opts = [
+    { t: "Victoire " + r.t1, k: c.w1 }, { t: "Victoire " + r.t2, k: c.w2 },
+    { t: "Les 2 marquent", k: c.btts }, { t: "Les 2 ne marquent pas", k: n - c.btts },
+    { t: "+2,5 buts", k: c.o25 }, { t: "−2,5 buts", k: n - c.o25 }
+  ];
+  if (comboMode === "prudent") opts.push(
+    { t: "Double chance " + r.t1 + " ou nul", k: c.w1 + c.d }, { t: "Double chance " + r.t2 + " ou nul", k: c.w2 + c.d },
+    { t: "+1,5 buts", k: c.o15 }, { t: "−3,5 buts", k: n - c.o35 });
+  opts.forEach(o => { o.p = (o.k + 1) / (n + 2); o.n = n; });
+  opts.sort((a, b) => b.p - a.p);
+  return { match: r.t1 + " – " + r.t2, ...opts[0] };
+}
+function combineHTML() {
+  const done = batchRes.filter(r => r.list && !r.wait);
+  if (!done.length) return "";
+  const max = comboMode === "prudent" ? 3 : 4, min = comboMode === "prudent" ? 0.7 : 0.6;
+  const picks = done.map(bestPick).filter(p => p && p.p >= min).sort((a, b) => b.p - a.p).slice(0, max);
+  const head = `<div class="combo"><div class="combo-head"><h3>Combiné proposé</h3>
+    <div class="tabs mini" id="comboMode"><button type="button" data-cm="prudent" aria-selected="${comboMode === "prudent"}">Prudent</button><button type="button" data-cm="audacieux" aria-selected="${comboMode === "audacieux"}">Audacieux</button></div></div>`;
+  if (picks.length < 2) return head + `<p class="hint" style="margin:0">Pas assez de matchs fiables pour un combiné : il faut au moins 2 matchs avec 4 confrontations ou plus et un pari passé souvent. Ajoute des matchs ou passe en « ${comboMode === "prudent" ? "Audacieux" : "Prudent"} ».</p></div>`;
+  const prob = picks.reduce((a, p) => a * p.p, 1);
+  return head + picks.map(p => `<div class="combo-row"><div><div class="combo-m">${esc(p.match)}</div><div class="combo-p">${esc(p.t)}</div></div><b>${p.k}/${p.n}</b></div>`).join("") +
+    `<div class="combo-sum"><span>Chance estimée que tout passe</span><b>${pc(prob)}</b></div>
+     <div class="combo-sum"><span>Cote totale à partir de laquelle ça vaut le coup</span><b>${(1 / prob).toFixed(2).replace(".", ",")}</b></div>
+     <p class="hint" style="margin:0">Calculé uniquement sur les confrontations passées. Ça ne tient pas compte des blessés, de la forme du moment ni du calendrier : vérifie avant de jouer, et ne mise que ce que tu peux perdre.</p></div>`;
 }
 $("bout").addEventListener("click", e => {
+  const cm = e.target.closest("[data-cm]");
+  if (cm) { comboMode = cm.dataset.cm; store.set("comboMode", comboMode); renderBatch(); return; }
   const b = e.target.closest("[data-open]"); if (!b) return;
   const r = batchRes[+b.dataset.open];
   $("t1").value = r.t1; $("t2").value = r.t2; $("p1").hidden = $("p2").hidden = true;
